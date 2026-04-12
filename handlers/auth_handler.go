@@ -146,3 +146,37 @@ func Login(c *gin.Context) {
 		"token":   token,
 	})
 }
+
+
+
+// =====================
+// GET USERS
+// =====================
+func GetUsers(c *gin.Context) {
+	rows, err := config.DB.Query("SELECT id, email FROM users")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+	defer rows.Close()
+
+	var users []models.User
+
+	for rows.Next() {
+		var user models.User
+
+		err := rows.Scan(&user.ID, &user.Email)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": err.Error(),
+			})
+			return
+		}
+
+		users = append(users, user)
+	}
+
+	c.JSON(http.StatusOK, users)
+}
