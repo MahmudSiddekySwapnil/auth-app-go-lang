@@ -1,23 +1,17 @@
 package main
 
 import (
-	"auth-app/config"
-	"auth-app/routes"
+	"auth-app/app"
 	"log"
 	"os"
 
-	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 )
 
 func main() {
 	_ = godotenv.Load()
 
-	config.ConnectDB()
-
-	r := gin.Default()
-
-	routes.SetupRoutes(r)
+	r := app.InitializeApp()
 
 	port := os.Getenv("PORT")
 	if port == "" {

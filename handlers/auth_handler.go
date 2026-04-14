@@ -1,21 +1,27 @@
 package handlers
 
 import (
-	"auth-app/config"
 	"auth-app/models"
-	"auth-app/utils"
-	"database/sql"
+	"auth-app/services"
+	"log"
 	"net/http"
-	"strings"
+	"regexp"
 
 	"github.com/gin-gonic/gin"
-	"golang.org/x/crypto/bcrypt"
 )
+
+type AuthHandler struct {
+	userService services.UserService
+}
+
+func NewAuthHandler(userService services.UserService) *AuthHandler {
+	return &AuthHandler{userService: userService}
+}
 
 // =====================
 // REGISTER
 // =====================
-func Register(c *gin.Context) {
+func (h *AuthHandler) Register(c *gin.Context) {
 	var user models.User
 
 	// Bind JSON request
@@ -26,6 +32,9 @@ func Register(c *gin.Context) {
 		return
 	}
 
+	// LOG: Print incoming request data
+	log.Printf("Register Request Received:\n  Email: %s\n  Name: %s\n  Password: %s\n", user.Email, user.Name, user.Password)
+
 	// Basic validation
 	if user.Email == "" || user.Password == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -34,37 +43,23 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	// Hash password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), 14)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to hash password",
+	// Email format validation
+	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+	if !emailRegex.MatchString(user.Email) {
+		log.Printf("⚠️  Invalid email format: %s\n", user.Email)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid email format",
 		})
 		return
 	}
 
-	// Insert user into DB
-	err = config.DB.QueryRow(
-		"INSERT INTO users (email, password) VALUES ($1, $2) RETURNING id",
-		user.Email,
-		string(hashedPassword),
-	).Scan(&user.ID)
-
-	// Handle DB errors
+	err := h.userService.Register(&user)
 	if err != nil {
-
-		// Duplicate email
-		if strings.Contains(err.Error(), "duplicate key") {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "Email already registered",
-			})
-			return
+		status := http.StatusInternalServerError
+		if err.Error() == "Email already registered" {
+			status = http.StatusBadRequest
 		}
-
-		// Other DB errors
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": err.Error(),
-		})
+		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -77,9 +72,8 @@ func Register(c *gin.Context) {
 // =====================
 // LOGIN
 // =====================
-func Login(c *gin.Context) {
+func (h *AuthHandler) Login(c *gin.Context) {
 	var user models.User
-	var storedPassword string
 
 	// Bind JSON
 	if err := c.BindJSON(&user); err != nil {
@@ -97,46 +91,13 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	// Get user password from DB
-	err := config.DB.QueryRow(
-		"SELECT password FROM users WHERE email=$1",
-		user.Email,
-	).Scan(&storedPassword)
-
-	// Handle errors
+	token, err := h.userService.Login(user.Email, user.Password)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": "Invalid email",
-			})
-			return
+		status := http.StatusInternalServerError
+		if err.Error() == "Invalid email" || err.Error() == "Wrong password" {
+			status = http.StatusUnauthorized
 		}
-
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": err.Error(),
-		})
-		return
-	}
-
-	// Compare password
-	err = bcrypt.CompareHashAndPassword(
-		[]byte(storedPassword),
-		[]byte(user.Password),
-	)
-
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Wrong password",
-		})
-		return
-	}
-
-	// Generate JWT token
-	token, err := utils.GenerateToken(user.Email)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to generate token",
-		})
+		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -147,36 +108,90 @@ func Login(c *gin.Context) {
 	})
 }
 
-
-
 // =====================
 // GET USERS
 // =====================
-func GetUsers(c *gin.Context) {
-	rows, err := config.DB.Query("SELECT id, email FROM users")
+func (h *AuthHandler) GetUsers(c *gin.Context) {
+	users, err := h.userService.GetAllUsers()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": err.Error(),
 		})
 		return
 	}
-	defer rows.Close()
 
-	var users []models.User
-
-	for rows.Next() {
-		var user models.User
-
-		err := rows.Scan(&user.ID, &user.Email)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": err.Error(),
-			})
-			return
-		}
-
-		users = append(users, user)
+	if users == nil {
+		users = []models.User{}
 	}
 
 	c.JSON(http.StatusOK, users)
+}
+
+// =====================
+// GET USER BY ID
+// =====================
+func (h *AuthHandler) GetUserByID(c *gin.Context) {
+	id := c.Param("id")
+
+	user, err := h.userService.GetUserByID(id)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if err.Error() == "User not found" {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, user)
+}
+
+// =====================
+// DELETE USER
+// =====================
+func (h *AuthHandler) DeleteUser(c *gin.Context) {
+	id := c.Param("id")
+
+	err := h.userService.DeleteUser(id)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if err.Error() == "User not found" {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "User deleted successfully",
+	})
+}
+
+// =====================
+// UPDATE USER
+// =====================
+func (h *AuthHandler) UpdateUser(c *gin.Context) {
+	id := c.Param("id")
+
+	var user models.User
+	if err := c.BindJSON(&user); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	err := h.userService.UpdateUser(id, &user)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if err.Error() == "User not found" {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "User updated successfully",
+	})
 }
