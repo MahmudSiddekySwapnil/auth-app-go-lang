@@ -29,6 +29,10 @@ go get golang.org/x/crypto/bcrypt
 # Godotenv - Loads environment variables from .env file
 # Why: Reads DB_URL, JWT_SECRET, PORT from .env file without hardcoding sensitive credentials
 go get github.com/joho/godotenv
+
+# Air - Live reload utility for Go applications
+# Why: Automatically restarts the application when source code changes during development
+go install github.com/air-verse/air@latest
 ```
 
 ## Running the Application
