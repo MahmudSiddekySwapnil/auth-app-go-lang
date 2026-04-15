@@ -15,7 +15,11 @@ func InitializeApp() *gin.Engine {
 
 	userRepo := repositories.NewUserRepository(config.DB)
 	userService := services.NewUserService(userRepo)
-	authHandler := handlers.NewAuthHandler(userService)
+
+	quoteRepo := repositories.NewQuoteRepository(config.DB)
+	quoteService := services.NewQuoteService(quoteRepo)
+
+	authHandler := handlers.NewAuthHandler(userService, quoteService)
 
 	r := gin.Default()
 	routes.SetupRoutes(r, authHandler)
