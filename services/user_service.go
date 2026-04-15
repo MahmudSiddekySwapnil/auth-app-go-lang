@@ -47,25 +47,25 @@ func (s *userService) Register(user *models.User) error {
 		return errors.New("Failed to hash password")
 	}
 	
-	log.Printf("🔐 Password hashed successfully: %s\n", string(hashedPassword))
+	log.Printf("Password hashed successfully: %s\n", string(hashedPassword))
 	user.Password = string(hashedPassword)
 
 	err = s.repo.Create(user)
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate key") {
-			log.Printf("⚠️  Duplicate email error: %s\n", user.Email)
+			log.Printf("Duplicate email error: %s\n", user.Email)
 			return errors.New("Email already registered")
 		}
-		log.Printf("❌ Database error: %v\n", err)
+		log.Printf("Database error: %v\n", err)
 		return err
 	}
 
-	log.Printf("✅ User registered successfully - ID: %d, Email: %s\n", user.ID, user.Email)
+	log.Printf("User registered successfully - ID: %d, Email: %s\n", user.ID, user.Email)
 	return nil
 }
 
 func (s *userService) Login(email, password string) (string, error) {
-	log.Printf("🔑 Login attempt - Email: %s\n", email)
+	log.Printf("Login attempt - Email: %s\n", email)
 	
 	user, err := s.repo.FindByEmail(email)
 	if err != nil {
