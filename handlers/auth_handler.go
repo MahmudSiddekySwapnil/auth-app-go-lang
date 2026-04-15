@@ -11,11 +11,12 @@ import (
 )
 
 type AuthHandler struct {
-	userService services.UserService
+	userService  services.UserService
+	quoteService services.QuoteService
 }
 
-func NewAuthHandler(userService services.UserService) *AuthHandler {
-	return &AuthHandler{userService: userService}
+func NewAuthHandler(userService services.UserService, quoteService services.QuoteService) *AuthHandler {
+	return &AuthHandler{userService: userService, quoteService: quoteService}
 }
 
 // =====================
@@ -194,4 +195,23 @@ func (h *AuthHandler) UpdateUser(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "User updated successfully",
 	})
+}
+
+
+// =====================
+// GET TODAY'S QUOTE
+// =====================
+func (h *AuthHandler) GetTodayQuote(c *gin.Context) {
+	quote, err := h.quoteService.FetchAndSaveTodayQuote()
+	if err != nil {
+		log.Println("Error fetching quote:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// ✅ Log response
+	log.Printf("Quote API Response: %+v\n", quote)
+
+	// ✅ Send response to client
+	c.JSON(http.StatusOK, quote)
 }
