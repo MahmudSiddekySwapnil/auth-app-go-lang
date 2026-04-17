@@ -20,7 +20,7 @@ func SetupRoutes(r *gin.Engine, authHandler *handlers.AuthHandler) {
 	user.DELETE("/:id", authHandler.DeleteUser)
 	user.PUT("/:id", authHandler.UpdateUser)
 	
-	utility :=api.Group("/utility")
+	utility := api.Group("/utility")
 	utility.Use(middleware.AuthMiddleware())
 	utility.GET("/quote", authHandler.GetTodayQuote)
 }
